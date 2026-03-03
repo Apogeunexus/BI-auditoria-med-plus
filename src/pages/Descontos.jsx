@@ -5,7 +5,7 @@ import {
 import { Wallet, DollarSign, AlertTriangle } from 'lucide-react';
 import KPICard from '../components/KPICard';
 import TripleComparisonCard from '../components/TripleComparisonCard';
-import { formatCurrency, aggregateByRubrica, LABELS } from '../data/generateData';
+import { formatCurrency, aggregateByCategoria, aggregateTotais } from '../data/supabaseData';
 
 const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
@@ -31,15 +31,16 @@ function CustomTooltip({ active, payload, label }) {
 }
 
 export default function Descontos({ colaboradores }) {
-  const rubricaAgg = useMemo(() => aggregateByRubrica(colaboradores, 'descontos'), [colaboradores]);
+  const rubricaAgg = useMemo(() => aggregateByCategoria(colaboradores, 'descontos'), [colaboradores]);
 
-  const totalAtual = Object.values(rubricaAgg).reduce((s, v) => s + v.atual, 0);
-  const totalCCT = Object.values(rubricaAgg).reduce((s, v) => s + v.cct, 0);
+  const totaisAgg = useMemo(() => aggregateTotais(colaboradores), [colaboradores]);
+  const totalAtual = totaisAgg.descontos.atual;
+  const totalCCT = totaisAgg.descontos.cct;
   const divergencia = totalCCT - totalAtual;
 
   const chartData = useMemo(() => {
     return Object.entries(rubricaAgg).map(([key, val]) => ({
-      name: LABELS.descontos[key]?.replace('(Empregado)', '').replace('(Copart.)', '').replace('(Desc.)', '').trim().substring(0, 18) || key,
+      name: key.replace('(Empregado)', '').replace('(Copart.)', '').replace('(Desc.)', '').trim().substring(0, 18),
       Atual: Math.round(val.atual * 100) / 100,
       Contrato: Math.round(val.contrato * 100) / 100,
       'CCT/CLT': Math.round(val.cct * 100) / 100,
@@ -50,7 +51,7 @@ export default function Descontos({ colaboradores }) {
     const rng = seededRng(456);
     const rubricas = Object.entries(rubricaAgg).filter(([, v]) => v.cct > 0);
     return rubricas.map(([key, val]) => ({
-      rubrica: LABELS.descontos[key] || key,
+      rubrica: key,
       meses: MESES.map((mes) => {
         const base = val.cct > 0 ? ((val.cct - val.atual) / val.cct * 100) : 0;
         const variacao = base + (rng() - 0.5) * 3;
@@ -78,7 +79,7 @@ export default function Descontos({ colaboradores }) {
           {Object.entries(rubricaAgg).map(([key, val], i) => (
             <TripleComparisonCard
               key={key}
-              title={LABELS.descontos[key] || key}
+              title={key}
               atual={val.atual}
               contrato={val.contrato}
               cct={val.cct}

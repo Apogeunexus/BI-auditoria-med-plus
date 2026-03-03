@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { formatCurrency, calcSeveridade } from '../data/generateData';
+import { formatCurrency, calcSeveridade } from '../data/supabaseData';
 
 const SEVERITY_CLASSES = {
   CRITICA: 'badge-critica',

@@ -1,29 +1,9 @@
 import { useMemo } from 'react';
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Legend, Area, AreaChart, ComposedChart, ReferenceLine
-} from 'recharts';
 import { DollarSign, TrendingUp, AlertTriangle, Scale, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import KPICard from '../components/KPICard';
 import TripleComparisonCard from '../components/TripleComparisonCard';
-import { formatCurrency, aggregateTotais, gerarEvolucaoMensal } from '../data/generateData';
+import { formatCurrency, aggregateTotais } from '../data/supabaseData';
 import { useState } from 'react';
-
-function CustomTooltip({ active, payload, label }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-white p-3 rounded-lg border border-borda text-[12px]">
-      <div className="font-semibold text-texto mb-2">{label}</div>
-      {payload.map((p, i) => (
-        <div key={i} className="flex items-center gap-2 mb-1">
-          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.color }} />
-          <span className="text-texto-sec">{p.name}:</span>
-          <span className="tabular-nums font-semibold text-texto">{formatCurrency(p.value)}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export default function VisaoExecutiva({ colaboradores }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -33,22 +13,18 @@ export default function VisaoExecutiva({ colaboradores }) {
   const perPage = 15;
 
   const totais = useMemo(() => aggregateTotais(colaboradores), [colaboradores]);
-  const evolucao = useMemo(() => gerarEvolucaoMensal(colaboradores), [colaboradores]);
 
-  const custoAtual = totais.custoTotal.atual;
-  const custoCCT = totais.custoTotal.cct;
+  const custoAtual = totais.custoTotal?.atual || 0;
+  const custoCCT = totais.custoTotal?.cct || 0;
   const aumentoNecessario = custoCCT - custoAtual;
   const riscoAnual = aumentoNecessario * 12;
 
-  // Waterfall data
-  const waterfall = useMemo(() => {
-    let acumulado = 0;
-    return evolucao.map((m) => {
-      const increment = m.risco;
-      acumulado += increment;
-      return { ...m, incremento: increment, acumulado };
-    });
-  }, [evolucao]);
+  // Helper: compute riscoAnual for a collaborator from totais
+  const getRiscoAnual = (c) => {
+    const ct = c.totais?.custoTotal;
+    if (!ct) return 0;
+    return ((ct.cct || 0) - (ct.atual || 0)) * 12;
+  };
 
   // Filtered and sorted collaborators
   const filteredColabs = useMemo(() => {
@@ -62,8 +38,8 @@ export default function VisaoExecutiva({ colaboradores }) {
       );
     }
     result.sort((a, b) => {
-      const va = a[sortBy] ?? 0;
-      const vb = b[sortBy] ?? 0;
+      const va = getRiscoAnual(a);
+      const vb = getRiscoAnual(b);
       return sortDir === 'desc' ? vb - va : va - vb;
     });
     return result;
@@ -95,7 +71,7 @@ export default function VisaoExecutiva({ colaboradores }) {
           <KPICard
             icon={TrendingUp} iconColor="text-alerta"
             label="Aumento Necessario" value={aumentoNecessario}
-            subtitle="Diferenca para regularizacao" trend={((aumentoNecessario / custoAtual) * 100)} delay={100}
+            subtitle="Diferenca para regularizacao" trend={custoAtual ? ((aumentoNecessario / custoAtual) * 100) : 0} delay={100}
           />
           <KPICard
             icon={AlertTriangle} iconColor="text-critico"
@@ -120,7 +96,8 @@ export default function VisaoExecutiva({ colaboradores }) {
                 proventos: 'Total Proventos',
                 descontos: 'Total Descontos',
                 encargos: 'Total Encargos',
-                beneficios: 'Custo Total Beneficios',
+                beneficios: 'Total Beneficios',
+                custosEmpresa: 'Custos Empresa',
                 liquido: 'Liquido Funcionario',
                 custoTotal: 'Custo Total Empresa'
               }[key]}
@@ -130,42 +107,6 @@ export default function VisaoExecutiva({ colaboradores }) {
               delay={i * 50}
             />
           ))}
-        </div>
-      </div>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
-        {/* Waterfall */}
-        <div className="card p-5">
-          <h3 className="text-sm font-semibold text-texto mb-1">Risco Acumulado (Waterfall)</h3>
-          <p className="text-[11px] text-texto-sec mb-4">Passivo trabalhista acumulando mes a mes</p>
-          <ResponsiveContainer width="100%" height={300}>
-            <ComposedChart data={waterfall}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-              <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#64748B' }} />
-              <YAxis tick={{ fontSize: 11, fill: '#64748B' }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="incremento" name="Risco Mensal" fill="#F59E0B" radius={[4, 4, 0, 0]} />
-              <Line type="monotone" dataKey="acumulado" name="Acumulado" stroke="#EF4444" strokeWidth={2} strokeDasharray="6 3" dot={{ r: 3 }} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Evolution */}
-        <div className="card p-5">
-          <h3 className="text-sm font-semibold text-texto mb-1">Evolucao Mensal</h3>
-          <p className="text-[11px] text-texto-sec mb-4">Comparativo de custo total — 3 parametros</p>
-          <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={evolucao}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-              <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#64748B' }} />
-              <YAxis tick={{ fontSize: 11, fill: '#64748B' }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-              <Tooltip content={<CustomTooltip />} />
-              <Area type="monotone" dataKey="cct" name="CCT/CLT" stroke="#10B981" fill="#10B981" fillOpacity={0.1} strokeWidth={2} />
-              <Area type="monotone" dataKey="contrato" name="Contrato" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.1} strokeWidth={2} />
-              <Area type="monotone" dataKey="atual" name="Atual" stroke="#E74C6F" fill="#E74C6F" fillOpacity={0.1} strokeWidth={2} />
-            </AreaChart>
-          </ResponsiveContainer>
         </div>
       </div>
 
@@ -213,8 +154,8 @@ export default function VisaoExecutiva({ colaboradores }) {
                   <td className="py-2.5 px-3 tabular-nums text-texto-sec text-xs">{c.cpf}</td>
                   <td className="py-2.5 px-3 tabular-nums text-texto-sec text-xs">{c.matricula}</td>
                   <td className="py-2.5 px-3 text-texto-sec">{c.competencia}</td>
-                  <td className={`py-2.5 px-3 text-right tabular-nums font-semibold ${c.riscoAnual > 0 ? 'text-critico' : 'text-contrato'}`}>
-                    {formatCurrency(c.riscoAnual)}
+                  <td className={`py-2.5 px-3 text-right tabular-nums font-semibold ${getRiscoAnual(c) > 0 ? 'text-critico' : 'text-contrato'}`}>
+                    {formatCurrency(getRiscoAnual(c))}
                   </td>
                 </tr>
               ))}

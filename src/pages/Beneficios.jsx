@@ -2,10 +2,10 @@ import { useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
-import { Gift, DollarSign, AlertTriangle, XCircle } from 'lucide-react';
+import { Gift, DollarSign, AlertTriangle, XCircle, Building } from 'lucide-react';
 import KPICard from '../components/KPICard';
 import TripleComparisonCard from '../components/TripleComparisonCard';
-import { formatCurrency, aggregateByRubrica, LABELS, calcSeveridade } from '../data/generateData';
+import { formatCurrency, aggregateByCategoria, aggregateTotais, calcSeveridade } from '../data/supabaseData';
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -24,17 +24,22 @@ function CustomTooltip({ active, payload, label }) {
 }
 
 export default function Beneficios({ colaboradores }) {
-  const rubricaAgg = useMemo(() => aggregateByRubrica(colaboradores, 'beneficios'), [colaboradores]);
+  const rubricaAgg = useMemo(() => aggregateByCategoria(colaboradores, 'beneficios'), [colaboradores]);
+  const custosEmpresaAgg = useMemo(() => aggregateByCategoria(colaboradores, 'custosEmpresa'), [colaboradores]);
 
-  const totalAtual = Object.values(rubricaAgg).reduce((s, v) => s + v.atual, 0);
-  const totalCCT = Object.values(rubricaAgg).reduce((s, v) => s + v.cct, 0);
+  const totaisAgg = useMemo(() => aggregateTotais(colaboradores), [colaboradores]);
+  const totalAtual = totaisAgg.beneficios.atual;
+  const totalCCT = totaisAgg.beneficios.cct;
   const divergencia = totalCCT - totalAtual;
 
-  // Horizontal bar data sorted by divergence
+  const totalCustosAtual = totaisAgg.custosEmpresa.atual;
+  const totalCustosCCT = totaisAgg.custosEmpresa.cct;
+
+  // Horizontal bar data sorted by divergence (beneficios only)
   const horizontalData = useMemo(() => {
     return Object.entries(rubricaAgg)
       .map(([key, val]) => ({
-        name: (LABELS.beneficios[key] || key).replace('(Empresa)', '').trim().substring(0, 22),
+        name: key.replace('(Empresa)', '').trim().substring(0, 22),
         Atual: Math.round(val.atual * 100) / 100,
         Contrato: Math.round(val.contrato * 100) / 100,
         'CCT/CLT': Math.round(val.cct * 100) / 100,
@@ -44,36 +49,49 @@ export default function Beneficios({ colaboradores }) {
       .sort((a, b) => b.divergencia - a.divergencia);
   }, [rubricaAgg]);
 
-  // Benefits required by CCT but not provided (or partially)
+  // Benefits required by CCT but not provided or insufficient (dynamic check)
   const beneficiosAusentes = useMemo(() => {
     const ausentes = [];
-    const checks = [
-      { key: 'valeAlimentacao', label: 'Vale Alimentacao', obrigatorio: 200.00 },
-    ];
-    for (const check of checks) {
-      const val = rubricaAgg[check.key];
-      if (val && val.atual < val.cct * 0.9) {
+    // Check all beneficios: flag any where atual < cct * 0.9
+    Object.entries(rubricaAgg).forEach(([key, val]) => {
+      if (val.cct > 0 && val.atual < val.cct * 0.9) {
         ausentes.push({
-          nome: check.label,
+          nome: key,
           valorCCT: val.cct,
           valorAtual: val.atual,
           risco: (val.cct - val.atual) * 12,
         });
       }
-    }
-    // Check for zero benefits
-    Object.entries(rubricaAgg).forEach(([key, val]) => {
-      if (val.cct > 0 && val.atual === 0 && !checks.find(c => c.key === key)) {
+    });
+    // Also check custosEmpresa for missing/insufficient items
+    Object.entries(custosEmpresaAgg).forEach(([key, val]) => {
+      if (val.cct > 0 && val.atual < val.cct * 0.9) {
         ausentes.push({
-          nome: LABELS.beneficios[key] || key,
+          nome: key,
           valorCCT: val.cct,
-          valorAtual: 0,
-          risco: val.cct * 12,
+          valorAtual: val.atual,
+          risco: (val.cct - val.atual) * 12,
         });
       }
     });
     return ausentes;
-  }, [rubricaAgg]);
+  }, [rubricaAgg, custosEmpresaAgg]);
+
+  // Horizontal bar data for custos empresa
+  const custosHorizontalData = useMemo(() => {
+    return Object.entries(custosEmpresaAgg)
+      .map(([key, val]) => ({
+        name: key.substring(0, 22),
+        Atual: Math.round(val.atual * 100) / 100,
+        Contrato: Math.round(val.contrato * 100) / 100,
+        'CCT/CLT': Math.round(val.cct * 100) / 100,
+        divergencia: Math.abs(val.cct - val.atual),
+      }))
+      .filter(d => d.Atual > 0 || d.Contrato > 0 || d['CCT/CLT'] > 0)
+      .sort((a, b) => b.divergencia - a.divergencia);
+  }, [custosEmpresaAgg]);
+
+  const hasCustosEmpresa = Object.keys(custosEmpresaAgg).length > 0;
 
   return (
     <div className="animate-fade-in">
@@ -128,7 +146,7 @@ export default function Beneficios({ colaboradores }) {
           {Object.entries(rubricaAgg).map(([key, val], i) => (
             <TripleComparisonCard
               key={key}
-              title={LABELS.beneficios[key] || key}
+              title={key}
               atual={val.atual}
               contrato={val.contrato}
               cct={val.cct}
@@ -138,8 +156,8 @@ export default function Beneficios({ colaboradores }) {
         </div>
       </div>
 
-      {/* Horizontal Bar Chart */}
-      <div className="card p-5">
+      {/* Horizontal Bar Chart - Beneficios */}
+      <div className="card p-5 mb-8">
         <h3 className="text-sm font-semibold text-texto mb-1">Comparativo Horizontal por Beneficio</h3>
         <p className="text-[11px] text-texto-sec mb-4">Ordenado por maior divergencia</p>
         <ResponsiveContainer width="100%" height={Math.max(300, horizontalData.length * 50)}>
@@ -155,6 +173,60 @@ export default function Beneficios({ colaboradores }) {
           </BarChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Custos Empresa Section */}
+      {hasCustosEmpresa && (
+        <>
+          <div className="mb-6 mt-10">
+            <h2 className="text-[18px] font-semibold text-texto flex items-center gap-2">
+              <Building size={20} className="text-texto-sec" />
+              Custos Empresa
+            </h2>
+            <p className="text-[13px] text-texto-sec mt-1">Plano ambulatorial, seguro de vida e demais custos da empresa</p>
+          </div>
+
+          <div className="flex flex-row gap-12 mb-8">
+            <KPICard icon={Building} iconColor="text-atual" label="Total Custos Empresa Atual" value={totalCustosAtual} delay={0} />
+            <KPICard icon={DollarSign} iconColor="text-cct" label="Total Custos Empresa CCT" value={totalCustosCCT} delay={50} />
+            <KPICard icon={AlertTriangle} iconColor="text-alerta" label="Divergencia Custos" value={Math.abs(totalCustosCCT - totalCustosAtual)} delay={100} />
+          </div>
+
+          <div className="mb-8">
+            <div className="section-label mb-4">Custos Empresa Individuais</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {Object.entries(custosEmpresaAgg).map(([key, val], i) => (
+                <TripleComparisonCard
+                  key={key}
+                  title={key}
+                  atual={val.atual}
+                  contrato={val.contrato}
+                  cct={val.cct}
+                  delay={i * 50}
+                />
+              ))}
+            </div>
+          </div>
+
+          {custosHorizontalData.length > 0 && (
+            <div className="card p-5">
+              <h3 className="text-sm font-semibold text-texto mb-1">Comparativo Horizontal — Custos Empresa</h3>
+              <p className="text-[11px] text-texto-sec mb-4">Ordenado por maior divergencia</p>
+              <ResponsiveContainer width="100%" height={Math.max(300, custosHorizontalData.length * 50)}>
+                <BarChart data={custosHorizontalData} layout="vertical" margin={{ left: 100 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                  <XAxis type="number" tick={{ fontSize: 11, fill: '#64748B' }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#64748B' }} width={100} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  <Bar dataKey="Atual" fill="#E74C6F" radius={[0, 3, 3, 0]} barSize={12} />
+                  <Bar dataKey="Contrato" fill="#3B82F6" radius={[0, 3, 3, 0]} barSize={12} />
+                  <Bar dataKey="CCT/CLT" fill="#10B981" radius={[0, 3, 3, 0]} barSize={12} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

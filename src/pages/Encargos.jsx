@@ -6,7 +6,7 @@ import {
 import { Building2, DollarSign, AlertTriangle } from 'lucide-react';
 import KPICard from '../components/KPICard';
 import TripleComparisonCard from '../components/TripleComparisonCard';
-import { formatCurrency, aggregateByRubrica, LABELS } from '../data/generateData';
+import { formatCurrency, aggregateByCategoria, aggregateTotais } from '../data/supabaseData';
 
 const ENCARGO_COLORS = [
   '#E74C6F', '#3B82F6', '#10B981', '#F59E0B', '#6366F1',
@@ -42,28 +42,29 @@ function DonutLabel({ viewBox, value }) {
 }
 
 export default function Encargos({ colaboradores }) {
-  const rubricaAgg = useMemo(() => aggregateByRubrica(colaboradores, 'encargos'), [colaboradores]);
+  const rubricaAgg = useMemo(() => aggregateByCategoria(colaboradores, 'encargos'), [colaboradores]);
 
-  const totalAtual = Object.values(rubricaAgg).reduce((s, v) => s + v.atual, 0);
-  const totalCCT = Object.values(rubricaAgg).reduce((s, v) => s + v.cct, 0);
+  const totaisAgg = useMemo(() => aggregateTotais(colaboradores), [colaboradores]);
+  const totalAtual = totaisAgg.encargos.atual;
+  const totalCCT = totaisAgg.encargos.cct;
   const divergencia = totalCCT - totalAtual;
 
   const encargoKeys = Object.keys(rubricaAgg);
-  const shortLabels = encargoKeys.map(k => (LABELS.encargos[k] || k).replace('Provisao ', 'Prov. ').replace('Patronal', 'Patr.').replace('(Prov. Rescisoria)', 'Resc.'));
+  const shortLabels = encargoKeys.map(k => k.replace('Provisao ', 'Prov. ').replace('Patronal', 'Patr.').replace('(Prov. Rescisoria)', 'Resc.'));
 
   // Stacked bar data
   const stackedData = useMemo(() => {
     return [
-      { name: 'Atual', ...Object.fromEntries(encargoKeys.map(k => [LABELS.encargos[k] || k, rubricaAgg[k].atual])) },
-      { name: 'Contrato', ...Object.fromEntries(encargoKeys.map(k => [LABELS.encargos[k] || k, rubricaAgg[k].contrato])) },
-      { name: 'CCT/CLT', ...Object.fromEntries(encargoKeys.map(k => [LABELS.encargos[k] || k, rubricaAgg[k].cct])) },
+      { name: 'Atual', ...Object.fromEntries(encargoKeys.map(k => [k, rubricaAgg[k].atual])) },
+      { name: 'Contrato', ...Object.fromEntries(encargoKeys.map(k => [k, rubricaAgg[k].contrato])) },
+      { name: 'CCT/CLT', ...Object.fromEntries(encargoKeys.map(k => [k, rubricaAgg[k].cct])) },
     ];
   }, [rubricaAgg]);
 
   // Donut data
   const donutAtual = useMemo(() =>
     encargoKeys.map((k, i) => ({
-      name: (LABELS.encargos[k] || k).substring(0, 20),
+      name: k.substring(0, 20),
       value: Math.round(rubricaAgg[k].atual * 100) / 100,
       fill: ENCARGO_COLORS[i % ENCARGO_COLORS.length],
     })).filter(d => d.value > 0),
@@ -72,7 +73,7 @@ export default function Encargos({ colaboradores }) {
 
   const donutCCT = useMemo(() =>
     encargoKeys.map((k, i) => ({
-      name: (LABELS.encargos[k] || k).substring(0, 20),
+      name: k.substring(0, 20),
       value: Math.round(rubricaAgg[k].cct * 100) / 100,
       fill: ENCARGO_COLORS[i % ENCARGO_COLORS.length],
     })).filter(d => d.value > 0),
@@ -98,7 +99,7 @@ export default function Encargos({ colaboradores }) {
           {Object.entries(rubricaAgg).map(([key, val], i) => (
             <TripleComparisonCard
               key={key}
-              title={LABELS.encargos[key] || key}
+              title={key}
               atual={val.atual}
               contrato={val.contrato}
               cct={val.cct}
@@ -119,7 +120,7 @@ export default function Encargos({ colaboradores }) {
             <YAxis type="category" dataKey="name" tick={{ fontSize: 12, fill: '#64748B', fontWeight: 600 }} width={80} />
             <Tooltip content={<CustomTooltip />} />
             {encargoKeys.map((k, i) => (
-              <Bar key={k} dataKey={LABELS.encargos[k] || k} stackId="a" fill={ENCARGO_COLORS[i % ENCARGO_COLORS.length]} />
+              <Bar key={k} dataKey={k} stackId="a" fill={ENCARGO_COLORS[i % ENCARGO_COLORS.length]} />
             ))}
           </BarChart>
         </ResponsiveContainer>
@@ -127,7 +128,7 @@ export default function Encargos({ colaboradores }) {
           {encargoKeys.map((k, i) => (
             <div key={k} className="flex items-center gap-1.5 text-[10px] text-texto-sec">
               <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: ENCARGO_COLORS[i % ENCARGO_COLORS.length] }} />
-              {(LABELS.encargos[k] || k).substring(0, 25)}
+              {k.substring(0, 25)}
             </div>
           ))}
         </div>

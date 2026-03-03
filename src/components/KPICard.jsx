@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { formatCurrency } from '../data/generateData';
+import { formatCurrency } from '../data/supabaseData';
 
 function useCountUp(target, duration = 800) {
   const [value, setValue] = useState(0);
